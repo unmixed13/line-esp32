@@ -1,60 +1,47 @@
-const express = require("express");
-const axios = require("axios");
-const bodyParser = require("body-parser");
+const express = require('express');
+const bodyParser = require('body-parser');
+const axios = require('axios');
 
 const app = express();
 app.use(bodyParser.json());
 
-// ====== CONFIG ======
-const ESP32_IP = "192.168.1.100"; // <-- เปลี่ยนเป็น IP ของ ESP32 ใน Wi-Fi บ้าน
-const ESP32_PORT = 80;            // พอร์ต Web Server ESP32
+// เปลี่ยนเป็น IP ของ ESP32 ใน Wi-Fi บ้าน
+const ESP32_IP = '192.168.1.xxx'; 
 
-// ====== LINE Webhook ======
-app.post("/line-webhook", async (req, res) => {
+// Route สำหรับ LINE Bot POST
+app.post('/command', async (req, res) => {
   try {
+    // LINE ส่งข้อความมาผ่าน req.body.events
     const events = req.body.events;
     if (!events || events.length === 0) return res.sendStatus(200);
 
-    for (const event of events) {
-      if (event.type === "message" && event.message.type === "text") {
-        const msg = event.message.text.toUpperCase();
-        console.log("📩 Message from LINE:", msg);
+    for (let event of events) {
+      if (event.type === 'message' && event.message.type === 'text') {
+        const text = event.message.text.toUpperCase();
+        let servoAction;
 
-        let action = "";
-        if (msg.includes("OPEN") || msg.includes("UNLOCK")) action = "OPEN";
-        else if (msg.includes("CLOSE") || msg.includes("LOCK")) action = "CLOSE";
-
-        if (action) {
-          const espUrl = `http://${ESP32_IP}:${ESP32_PORT}/command?action=${action}`;
-          console.log("➡️ Sending to ESP32:", espUrl);
-
-          try {
-            await axios.get(espUrl);
-            console.log("✅ Sent successfully");
-          } catch (err) {
-            console.error("❌ Error sending to ESP32:", err.message);
-          }
+        if (text === 'OPEN' || text === 'UNLOCK') {
+          servoAction = 'OPEN';
+        } else if (text === 'CLOSE' || text === 'LOCK') {
+          servoAction = 'CLOSE';
         } else {
-          console.log("⚠️ Unknown command from LINE:", msg);
+          continue; // ไม่ใช่คำสั่งที่รองรับ
         }
+
+        // ส่งคำสั่งไป ESP32
+        await axios.get(`http://${ESP32_IP}/servo?action=${servoAction}`);
+        console.log(`Sent ${servoAction} command to ESP32`);
       }
     }
 
+    // ตอบ LINE 200 OK
     res.sendStatus(200);
+
   } catch (err) {
-    console.error("❌ Webhook error:", err);
+    console.error(err);
     res.sendStatus(500);
   }
 });
 
-// ====== Test Route ======
-app.get("/", (req, res) => {
-  res.send("Server is running!");
-});
-
-// ====== START SERVER ======
-const PORT = 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
- 
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
