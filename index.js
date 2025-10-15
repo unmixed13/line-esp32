@@ -5,35 +5,61 @@ const axios = require('axios');
 const app = express();
 app.use(bodyParser.json());
 
-// IP ของ ESP32 ใน Wi-Fi บ้าน
-const ESP32_IP = '192.168.1.xxx';
+// =======================================
+// ตัวแปร ESP32 ของบิว
+// =======================================
+const ESP32_IP = '192.168.1.xxx'; // เปลี่ยนเป็น IP ของ ESP32 ในบ้าน
+const ESP32_PORT = 80; // ถ้า ESP32 ใช้ port 80 ก็ปล่อยไว้
 
-// Webhook endpoint ต้องตรงกับ URL ที่ใส่ใน LINE Developer
+// =======================================
+// Route สำหรับเช็ค server
+// =======================================
+app.get('/', (req, res) => {
+  res.send('Server is running ✅');
+});
+
+// =======================================
+// Route webhook สำหรับ LINE
+// =======================================
 app.post('/webhook', async (req, res) => {
+  console.log('📩 LINE webhook received:', req.body);
+
   try {
     const events = req.body.events;
-    for (const event of events) {
+    if (!events) return res.sendStatus(200);
+
+    for (let event of events) {
       if (event.type === 'message' && event.message.type === 'text') {
         const text = event.message.text.toLowerCase();
-        console.log('Received:', text);
 
-        let angle;
-        if (text === 'open' || text === 'unlock') angle = 90;
-        else if (text === 'close' || text === 'lock') angle = 0;
-        else continue;
+        let cmd = null;
+        if (text === 'open' || text === 'unlock') cmd = 'OPEN';
+        if (text === 'close' || text === 'lock') cmd = 'CLOSE';
 
-        // ส่งคำสั่งไป ESP32
-        await axios.get(`http://${ESP32_IP}/servo?angle=${angle}`);
+        if (cmd) {
+          // ส่งคำสั่งไป ESP32
+          try {
+            await axios.get(`http://${ESP32_IP}:${ESP32_PORT}/?cmd=${cmd}`);
+            console.log(`✅ Sent command ${cmd} to ESP32`);
+          } catch (err) {
+            console.error('❌ Error sending command to ESP32:', err.message);
+          }
+        }
       }
     }
-    res.sendStatus(200); // ต้องตอบ 200 ให้ LINE
+
+    // ตอบ LINE ว่ารับ webhook แล้ว
+    res.sendStatus(200);
   } catch (err) {
     console.error(err);
     res.sendStatus(500);
   }
 });
 
+// =======================================
+// Start server
+// =======================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
