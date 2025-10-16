@@ -8,8 +8,8 @@ app.use(bodyParser.json());
 // =======================================
 // ตัวแปร
 // =======================================
-const LINE_TOKEN = 'dH8P1oh9GQBtH0IJ3JBKcNe4aPzPRgTfmtjI3t2WDhe5uerlWcSCY4kyTSZYXtdr1XXqTLDKVxQmKuNbKnjQKZmzxP9LOMy+c92kMn+qvCVb9gANwsxzTAP9mrs1cmUAdDSCdDt44VID+WnImzqLKgdB04t89/1O/w1cDnyilFU='; // <<< ใส่ Token ตรงนี้
-const ESP32_IP = '192.168.1.xxx'; // เปลี่ยนเป็น IP ของ ESP32
+const LINE_TOKEN = 'dH8P1oh9GQBtH0IJ3JBKcNe4aPzPRgTfmtjI3t2WDhe5uerlWcSCY4kyTSZYXtdr1XXqTLDKVxQmKuNbKnjQKZmzxP9LOMy+c92kMn+qvCVb9gANwsxzTAP9mrs1cmUAdDSCdDt44VID+WnImzqLKgdB04t89/1O/w1cDnyilFU='; // <<< ใส่ Token ของบอท LINE
+const ESP32_IP = '192.168.1.xxx'; // <<< ใส่ IP ของ ESP32
 const ESP32_PORT = 80;
 
 // =======================================
@@ -63,14 +63,35 @@ app.post('/webhook', async (req, res) => {
         } else if (text === 'close' || text === 'lock') {
           cmd = 'CLOSE';
           replyText = '🔒 กำลังปิดล็อก...';
+        } else if (text === 'status') {
+          replyText = '📡 กำลังตรวจสอบสถานะ...';
+          await replyMessage(event.replyToken, replyText);
+
+          try {
+            const response = await axios.get(`http://${ESP32_IP}:${ESP32_PORT}/status`);
+            const status = response.data; // สมมติ ESP32 ตอบกลับเป็น "LOCKED" หรือ "UNLOCKED"
+            let msg = '⚙️ สถานะปัจจุบัน: ';
+            if (status.includes('LOCKED')) msg += '🔒 ล็อกอยู่';
+            else if (status.includes('UNLOCKED')) msg += '🔓 ปลดล็อกอยู่';
+            else msg += status;
+
+            // ส่งข้อความสถานะกลับ LINE
+            await replyMessage(event.replyToken, msg);
+          } catch (err) {
+            await replyMessage(event.replyToken, '❌ ไม่สามารถเชื่อมต่อ ESP32 ได้');
+            console.error('Error getting status:', err.message);
+          }
+
+          // ข้ามไป event ถัดไป
+          continue;
         } else {
-          replyText = '❔ พิมพ์ open หรือ close เพื่อควบคุมกล่องพัสดุ';
+          replyText = '❔ คำสั่งไม่ถูกต้อง — พิมพ์ open / close / status';
         }
 
-        // ตอบกลับใน LINE ก่อน
+        // ตอบกลับใน LINE
         await replyMessage(event.replyToken, replyText);
 
-        // แล้วค่อยสั่ง ESP32
+        // ถ้ามีคำสั่งไป ESP32 ก็ส่งไป
         if (cmd) {
           try {
             await axios.get(`http://${ESP32_IP}:${ESP32_PORT}/?cmd=${cmd}`);
